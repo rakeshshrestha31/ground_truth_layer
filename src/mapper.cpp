@@ -12,6 +12,9 @@
 #include <cmath>
 #include <limits>
 
+#include <ctime>
+#include <chrono>
+
 // how big is the obstacle given by each laser beam (in pixel)
 #define LASER_BEAM_WIDTH 1
 
@@ -63,10 +66,18 @@ int Mapper::updateMap(const sensor_msgs::LaserScanConstPtr &laser_scan, const na
   }
   robot_pose_ = poseFromGeometryPoseMsg(robot_odometry->pose.pose);
 
+  double mapper_start_us = std::chrono::duration_cast< std::chrono::microseconds >(
+    std::chrono::system_clock::now().time_since_epoch()
+  ).count();
+
   if (!updateLaserScan(laser_scan, robot_pose_)) {
     return 0;
   }
+  double mapper_end_us = std::chrono::duration_cast< std::chrono::microseconds >(
+    std::chrono::system_clock::now().time_since_epoch()
+  ).count();
 
+  ROS_INFO("mapper took: %f us", mapper_end_us - mapper_start_us);
   // debug
   cv::Mat map_correct_flip;
   cv::flip(map_, map_correct_flip, 0);
@@ -85,6 +96,13 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
 
   auto laser_beam_orientation = robot_pose.a + laser_scan->angle_min;
 
+  int robot_grid_x, robot_grid_y;
+  if (!convertToGridCoords(robot_pose.x, robot_pose.y, robot_grid_x, robot_grid_y))
+  {
+    ROS_ERROR("Robot not within groundtruth map");
+    return 0;
+  }
+
   for (uint32_t i = 0; i < sample_count; i++) {
     // normalize the angle
     laser_beam_orientation = atan2(sin(laser_beam_orientation), cos(laser_beam_orientation));
@@ -95,12 +113,12 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
     laser_x = robot_pose.x +  scan[i] * cos(laser_beam_orientation);
     laser_y = robot_pose.y +  scan[i] * sin(laser_beam_orientation);
 
-    if (convertToGridCoords(laser_x, laser_y, laser_grid_x, laser_grid_y)) {
+    if (!convertToGridCoords(laser_x, laser_y, laser_grid_x, laser_grid_y)) {
       continue;
     }
 
     // TODO: parallelize ray casting
-    drawScanLine(robot_pose.x, robot_pose.y, laser_x, laser_y);
+    drawScanLine(robot_grid_x, robot_grid_y, laser_grid_x, laser_grid_y);
 
     if ( scan[i] < (laser_scan->range_max - std::numeric_limits<float>::min()) ) {
       // draw obstacle of size (2.LASER_BEAM_WIDTH X 2.LASER_BEAM_WIDTH) pixels
@@ -136,26 +154,15 @@ int Mapper::convertToGridCoords(double x, double y, int &grid_x, int &grid_y)
     grid_x > width_ ||
     grid_y > height_
     ) {
-    return 1;
-  } else {
     return 0;
+  } else {
+    return 1;
   }
 }
 
-int Mapper::drawScanLine(double x1, double y1, double x2, double y2)
+int Mapper::drawScanLine(int x1, int y1, int x2, int y2)
 {
-
-  int grid_x1, grid_y1, grid_x2, grid_y2;
-
-  if ( convertToGridCoords(x1, y1, grid_x1, grid_y1) ) {
-    return 1;
-  }
-
-  if ( convertToGridCoords(x2, y2, grid_x2, grid_y2) ) {
-    return 1;
-  }
-
-  cv::LineIterator it(map_, cv::Point(grid_x1, grid_y1), cv::Point(grid_x2, grid_y2));
+  cv::LineIterator it(map_, cv::Point(x1, y1), cv::Point(x2, y2));
 
   // TODO: return only the pixel positions without modifying the map (for parallelization)
   for(int i = 0; i < it.count; i++, ++it) {

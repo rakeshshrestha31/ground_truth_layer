@@ -57,7 +57,7 @@ public:
 
   int updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, robot_pose_t robot_pose);
 
-  int drawScanLine(double x1, double y1, double x2, double y2);
+  int drawScanLine(int x1, int y1, int x2, int y2);
 
   // utilities
   /**

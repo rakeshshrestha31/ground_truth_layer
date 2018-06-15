@@ -2,10 +2,12 @@
 // Created by rakesh on 14/06/18.
 //
 
-#include <costmap_2d/cost_values.h>
 #include <ground_truth_layer/mapper.h>
 
 #include <ros/ros.h>
+#include <costmap_2d/cost_values.h>
+#include <tf/tf.h>
+
 #include <iostream>
 #include <cmath>
 #include <limits>
@@ -31,7 +33,7 @@ cv::Mat Mapper::getMapCopy()
   return map_.clone();
 }
 
-void Mapper::initMap(int width, int height, float resolution, Stg::ModelPosition* robot)
+void Mapper::initMap(int width, int height, float resolution, const nav_msgs::OdometryConstPtr robot_odometry)
 {
   resolution_ = resolution;
   
@@ -39,51 +41,41 @@ void Mapper::initMap(int width, int height, float resolution, Stg::ModelPosition
   height_ = (int)round(height / resolution_);
   map_ = cv::Mat::zeros(height_, width_, CV_8UC1);
 
-  robot_pose_ = robot->GetPose();
+  robot_pose_ = poseFromGeometryPoseMsg(robot_odometry->pose.pose);
 }
 
-int Mapper::updateMap(Stg::Pose new_robot_pose, const Stg::ModelRanger::Sensor& sensor)
-{
-
-  if (updateRobotPose(new_robot_pose)) {
-    return 1;
-  }
-
-  if (updateLaserScan(sensor)) {
-    return 1;
-  }
-
-  return 0;
-}
-
-int Mapper::updateRobotPose(Stg::Pose new_robot_pose)
+int Mapper::updateMap(const nav_msgs::OdometryConstPtr &robot_odometry, const sensor_msgs::LaserScanConstPtr &laser_scan)
 {
   boost::mutex::scoped_lock lock(mutex_);
-  robot_pose_ = new_robot_pose;
-  return 0;
+  robot_pose_ = poseFromGeometryPoseMsg(robot_odometry->pose.pose);
+
+  if (updateLaserScan(laser_scan)) {
+    return 0;
+  }
+
+  return 1;
 }
 
-int Mapper::updateLaserScan(const Stg::ModelRanger::Sensor& sensor)
+int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan)
 {
   // get the data
-  const std::vector<Stg::meters_t>& scan = sensor.ranges;
+  const auto &scan = laser_scan->ranges;
 
   auto sample_count = scan.size();
   if( sample_count < 1 )
     return 1;
 
-  double laser_orientation = robot_pose_.a - sensor.fov/2.0;
-  double angle_increment = sensor.fov/(double)(sensor.sample_count-1);
+  auto laser_beam_orientation = robot_pose_.a - laser_scan->angle_min;
 
   for (uint32_t i = 0; i < sample_count; i++) {
     // normalize the angle
-    laser_orientation = atan2(sin(laser_orientation), cos(laser_orientation));
+    laser_beam_orientation = atan2(sin(laser_beam_orientation), cos(laser_beam_orientation));
 
     double laser_x, laser_y;
     int laser_grid_x, laser_grid_y;
 
-    laser_x = robot_pose_.x +  scan[i] * cos(laser_orientation);
-    laser_y = robot_pose_.y +  scan[i] * sin(laser_orientation);
+    laser_x = robot_pose_.x +  scan[i] * cos(laser_beam_orientation);
+    laser_y = robot_pose_.y +  scan[i] * sin(laser_beam_orientation);
 
     if (convertToGridCoords(laser_x, laser_y, laser_grid_x, laser_grid_y)) {
       continue;
@@ -92,10 +84,8 @@ int Mapper::updateLaserScan(const Stg::ModelRanger::Sensor& sensor)
     // TODO: parallelize ray casting
     drawScanLine(robot_pose_.x, robot_pose_.y, laser_x, laser_y);
 
-    if ( scan[i] < (sensor.range.max - std::numeric_limits<float>::min()) ) {
-
+    if ( scan[i] < (laser_scan->range_max - std::numeric_limits<float>::min()) ) {
       // draw obstacle of size (2.LASER_BEAM_WIDTH X 2.LASER_BEAM_WIDTH) pixels
-      // TODO: use opencv to draw line
       for (int row_offset = -LASER_BEAM_WIDTH; row_offset <= LASER_BEAM_WIDTH; row_offset++) {
         int y = laser_grid_y + row_offset;
         if (y >= 0 && y < map_.rows) {
@@ -108,9 +98,10 @@ int Mapper::updateLaserScan(const Stg::ModelRanger::Sensor& sensor)
         }
       }
     }
-    laser_orientation += angle_increment;
+
+    laser_beam_orientation += laser_scan->angle_increment;
   }
-  return 0;
+  return 1;
 }
 
 /*************** Utilities ***************/
@@ -152,6 +143,15 @@ int Mapper::drawScanLine(double x1, double y1, double x2, double y2)
   }
 
   return 0;
-
 }
+
+Mapper::robot_pose_t Mapper::poseFromGeometryPoseMsg(const geometry_msgs::Pose &pose_msg)
+{
+  return {
+    pose_msg.position.x,
+    pose_msg.position.y,
+    tf::getYaw(pose_msg.orientation)
+  };
+}
+
 } // namespace ground_truth_layer

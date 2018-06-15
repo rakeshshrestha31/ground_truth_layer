@@ -14,7 +14,9 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
-#include <stage.hh>
+
+#include <nav_msgs/Odometry.h>
+#include <sensor_msgs/LaserScan.h>
 
 
 namespace ground_truth_layer
@@ -23,22 +25,27 @@ class Mapper
 {
 public:
 
+  typedef struct
+  {
+    double x;
+    double y;
+    double a;
+  } robot_pose_t;
+
   cv::Mat getMapCopy();
 
   int getWidth() { return width_; }
 
   int getHeight() { return height_; }
 
-  void initMap(int width, int height, float resolution, Stg::ModelPosition* robot);
+  void initMap(int width, int height, float resolution, const nav_msgs::OdometryConstPtr robot_odometry);
 
   void reset();
 
-  // @output: 0 - success, 1 - failure
-  int updateMap(Stg::Pose new_robot_pose, const Stg::ModelRanger::Sensor &sensor);
+  // @return: 1 - success, 0 - failure
+  int updateMap(const nav_msgs::OdometryConstPtr &robot_odometry, const sensor_msgs::LaserScanConstPtr &laser_scan);
 
-  int updateRobotPose(Stg::Pose new_robot_pose);
-
-  int updateLaserScan(const Stg::ModelRanger::Sensor &sensor);
+  int updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan);
 
   int drawScanLine(double x1, double y1, double x2, double y2);
 
@@ -47,6 +54,8 @@ public:
    * @brief convert coords from continuous world coordinate to discrete image coord
    */
   int convertToGridCoords(double x, double y, int &grid_x, int &grid_y);
+
+  static robot_pose_t poseFromGeometryPoseMsg(const geometry_msgs::Pose &pose_msg);
 
 
 protected:
@@ -59,9 +68,7 @@ protected:
   int height_;
   float resolution_;  ///< @brief meters/pixels
 
-  Stg::Pose robot_pose_;
-  Stg::Size robot_size_;
-
+  robot_pose_t robot_pose_;
   static constexpr double one_over_sqrt_2_ = 1. / sqrt(2);
 
   // to maintain gradient over previous laser scans

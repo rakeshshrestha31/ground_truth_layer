@@ -1,7 +1,7 @@
 <class_libraries>
-    <library path="lib/libground_truth_layer">
-        <class type="ground_truth_layer::GroundTruthLayer"  base_class_type="costmap2d::Layer">
-            <description>costmap layer for incrementally built ground truth map from synchronized laser scans and odometry data</description>
-        </class>
-    </library>
+<library path="libground_truth_layer">
+    <class type="ground_truth_layer::GroundTruthLayer" base_class_type="costmap_2d::Layer">
+        <description>costmap layer for incrementally built ground truth map from synchronized laser scans and odometry data</description>
+    </class>
+</library>
 </class_libraries>

@@ -48,4 +48,3 @@ void GroundTruthLayer::callback(const sensor_msgs::LaserScanConstPtr &laser_scan
 }
 
 } // namespace ground_truth_layer
-

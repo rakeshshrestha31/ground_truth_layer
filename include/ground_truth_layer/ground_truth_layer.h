@@ -8,6 +8,7 @@
 #include <ros/ros.h>
 #include <costmap_2d/costmap_layer.h>
 #include <costmap_2d/layered_costmap.h>
+#include <costmap_2d/costmap_2d.h>
 #include <costmap_2d/GenericPluginConfig.h>
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/LaserScan.h>
@@ -16,22 +17,22 @@
 
 namespace ground_truth_layer
 {
-class GroundTruthLayer : public costmap_2d::Layer
+class GroundTruthLayer : public costmap_2d::Layer, public costmap_2d::Costmap2D
 {
 public:
   GroundTruthLayer();
-  virtual ~GroundTruthLayer();
+  ~GroundTruthLayer();
 
   virtual void onInitialize();
-  virtual void activate();
-  virtual void deactivate();
-  virtual void reset();
-
-  virtual void updateBounds(double robot_x, double robot_y, double robot_yaw, double* min_x, double* min_y,
-                            double* max_x, double* max_y);
-  virtual void updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, int min_j, int max_i, int max_j);
-
-  virtual void matchSize();
+//  virtual void activate();
+//  virtual void deactivate();
+//  virtual void reset();
+//
+//  virtual void updateBounds(double robot_x, double robot_y, double robot_yaw, double* min_x, double* min_y,
+//                            double* max_x, double* max_y);
+//  virtual void updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, int min_j, int max_i, int max_j);
+//
+//  virtual void matchSize();
 
   void callback(const sensor_msgs::LaserScanConstPtr &laser_scan,
                 const nav_msgs::OdometryConstPtr &odometry);

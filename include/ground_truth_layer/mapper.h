@@ -10,6 +10,8 @@
 
 // misc includes
 #include <boost/thread/mutex.hpp>
+#include <boost/atomic.hpp>
+
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -32,20 +34,28 @@ public:
     double a;
   } robot_pose_t;
 
+  Mapper();
+
   cv::Mat getMapCopy();
 
   int getWidth() { return width_; }
 
   int getHeight() { return height_; }
 
-  void initMap(int width, int height, float resolution, const nav_msgs::OdometryConstPtr robot_odometry);
+  /**
+   *
+   * @param width width of map in meters
+   * @param height height of map in meters
+   * @param resolution meters/pixel in map
+   */
+  void initMap(int width, int height, float resolution);
 
   void reset();
 
   // @return: 1 - success, 0 - failure
-  int updateMap(const nav_msgs::OdometryConstPtr &robot_odometry, const sensor_msgs::LaserScanConstPtr &laser_scan);
+  int updateMap(const sensor_msgs::LaserScanConstPtr &laser_scan, const nav_msgs::OdometryConstPtr &robot_odometry);
 
-  int updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan);
+  int updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, robot_pose_t robot_pose);
 
   int drawScanLine(double x1, double y1, double x2, double y2);
 
@@ -60,6 +70,7 @@ public:
 
 protected:
   boost::mutex mutex_;
+  boost::atomic_bool is_initialized_;
 
   cv::Mat map_;
   cv::Mat relative_map_;
@@ -69,10 +80,6 @@ protected:
   float resolution_;  ///< @brief meters/pixels
 
   robot_pose_t robot_pose_;
-  static constexpr double one_over_sqrt_2_ = 1. / sqrt(2);
-
-  // to maintain gradient over previous laser scans
-  std::map<std::pair<int, int>, double> laser_scan_gradient_;
 };
 } // namespace ground_truth_layer
 #endif //GROUND_TRUTH_LAYER_MAPPER_H

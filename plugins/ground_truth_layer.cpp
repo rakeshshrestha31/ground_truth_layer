@@ -31,6 +31,16 @@ void GroundTruthLayer::onInitialize()
 
   local_nh_->param("odom_topic",  odometry_topic_, std::string("odom"));
   local_nh_->param("laser_topic", laser_topic_,    std::string("scan"));
+  local_nh_->param("resolution",  resolution_,     0.05);
+
+  double xmin, xmax, ymin, ymax;
+  local_nh_->param("xmin", xmin, -15.0);
+  local_nh_->param("ymin", ymin, -15.0);
+  local_nh_->param("xmax", xmax, 15.0);
+  local_nh_->param("ymax", ymax, 15.0);
+
+  width_ = (unsigned int)((xmax - xmin) / resolution_);
+  height_ = (unsigned int)((ymax - ymin) / resolution_);
 
   // (re)subscribe only when first time or the topic name changed
   bool is_resubscribed = false;
@@ -58,13 +68,14 @@ void GroundTruthLayer::onInitialize()
     topic_sync_->registerCallback(boost::bind(&GroundTruthLayer::updateMap, this, _1, _2));
   }
 
+  ROS_INFO("Received a %d X %d map at %f m/pix", width_, height_, resolution_);
+  mapper_.initMap(width_, height_, resolution_);
 }
 
 void GroundTruthLayer::updateMap(const sensor_msgs::LaserScanConstPtr &laser_scan,
                                 const nav_msgs::OdometryConstPtr &odometry)
 {
-  // TODO
-  ROS_INFO("laser/odom Received!!!");
+  mapper_.updateMap(laser_scan, odometry);
 }
 
 void GroundTruthLayer::reset()
@@ -90,30 +101,5 @@ void GroundTruthLayer::deactivate()
   }
 }
 
-void GroundTruthLayer::matchSize()
-{
-  // adapted from static layer
-  // TODO: preserve previously mapped portions
-  auto master_costmap_ptr = layered_costmap_->getCostmap();
-  resizeMap(master_costmap_ptr->getSizeInCellsX(), master_costmap_ptr->getSizeInCellsY(), master_costmap_ptr->getResolution(),
-            master_costmap_ptr->getOriginX(), master_costmap_ptr->getOriginY());
-}
-
-void GroundTruthLayer::updateBounds(double robot_x, double robot_y, double robot_yaw, double *min_x, double *min_y,
-                                    double *max_x, double *max_y)
-{
-  // copied from StaticLayer
-  useExtraBounds(min_x, min_y, max_x, max_y);
-
-  double wx, wy;
-
-  mapToWorld(x_, y_, wx, wy);
-  *min_x = std::min(wx, *min_x);
-  *min_y = std::min(wy, *min_y);
-
-  mapToWorld(x_ + width_, y_ + height_, wx, wy);
-  *max_x = std::max(wx, *max_x);
-  *max_y = std::max(wy, *max_y);
-}
 
 } // namespace ground_truth_layer

@@ -23,17 +23,13 @@ class Mapper
 {
 public:
 
-  cv::Mat getMap();
-
-  cv::Mat getCompleteMap();
-
-  cv::Mat getMapWithoutRobot() { return map_; }
+  cv::Mat getMapCopy();
 
   int getWidth() { return width_; }
 
   int getHeight() { return height_; }
 
-  void initMap(int width, int height, Stg::ModelPosition *robot);
+  void initMap(int width, int height, float resolution, Stg::ModelPosition* robot);
 
   void reset();
 
@@ -44,22 +40,12 @@ public:
 
   int updateLaserScan(const Stg::ModelRanger::Sensor &sensor);
 
-  int drawRobot();
-
   int drawScanLine(double x1, double y1, double x2, double y2);
 
-  // for gradient over previous robot positions
-  int addPointToPositionGradient();
-
-  void enforcePositionGradientDecay();
-
-  int addPointToRecentlyExploredPixel(int grid_x, int grid_y);
-
-  int removePointFromRecentlyExploredPixel(int grid_x, int grid_y);
-
-  void updateRecentlyExploredPixels();
-
   // utilities
+  /**
+   * @brief convert coords from continuous world coordinate to discrete image coord
+   */
   int convertToGridCoords(double x, double y, int &grid_x, int &grid_y);
 
 
@@ -71,28 +57,15 @@ protected:
 
   int width_;
   int height_;
-
-  int robot_grid_size_x_;
-  int robot_grid_size_y_;
-  int robot_effective_size_;
+  float resolution_;  ///< @brief meters/pixels
 
   Stg::Pose robot_pose_;
   Stg::Size robot_size_;
 
-  double one_over_sqrt_2_;
+  static constexpr double one_over_sqrt_2_ = 1. / sqrt(2);
 
-  // to keep track of what color the robot footprint was before coloring it to CURRENT_ROBOT_COLOR
-  cv::Mat robot_footprint_;
-
-  // to maintain gradient over previous robot positions
-  std::map<std::pair<int, int>, double> position_gradient_;
-
-  // to maintain gradient over prevous laser scans
+  // to maintain gradient over previous laser scans
   std::map<std::pair<int, int>, double> laser_scan_gradient_;
-
-  // to maintain list of recently explored pixels: key=pixel position, value=timestamp it was added (in secs)
-  std::map<std::pair<int, int>, double> recently_explored_pixels_;
-
 };
 } // namespace ground_truth_layer
 #endif //GROUND_TRUTH_LAYER_MAPPER_H

@@ -48,7 +48,9 @@ public:
    * @param height height of map in meters
    * @param resolution meters/pixel in map
    */
-  void initMap(int width, int height, float resolution);
+  void initMap(int width, int height, float resolution,
+               double origin_x_meters, double origin_y_meters,
+              uint8_t *pointer);
 
   void reset();
 
@@ -60,6 +62,17 @@ public:
   int drawScanLine(int x1, int y1, int x2, int y2);
 
   // utilities
+  /**
+   * @brief find the offset in the map to be applied based on costmap offset
+   * @param origin_x_meters x-coord of origin of map returned by costmap->getOriginX() in meters
+   * @param origin_y_meters y-coord of origin of map returned by costmap->getOriginY() in meters
+   * @param offset_x output arg x-coord offset to be applied in map (grid) coords
+   * @param offset_y output arg y-coord offset to be applied in map (grid) coords
+   */
+  static void getMapOffset(double origin_x_meters, double origin_y_meters,
+                           double width, double height, double resolution,
+                           int &offset_x, int &offset_y);
+
   /**
    * @brief convert coords from continuous world coordinate to discrete image coord
    */
@@ -78,6 +91,10 @@ protected:
   int width_;
   int height_;
   float resolution_;  ///< @brief meters/pixels
+
+  // origin of the map
+  int origin_x_;
+  int origin_y_;
 
   robot_pose_t robot_pose_;
 };

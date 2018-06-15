@@ -53,8 +53,6 @@ protected:
   Mapper mapper_;
 
   double resolution_;
-  unsigned int x_;        ///< @brief x-coordinate of map center
-  unsigned int y_;        ///< @brief y-coordinate of map center
   unsigned int width_;    ///< @brief width of the map
   unsigned int height_;   ///< @brief height of the map
 

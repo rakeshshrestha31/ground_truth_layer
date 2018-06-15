@@ -6,8 +6,6 @@
 #include <costmap_2d/costmap_math.h>
 #include <pluginlib/class_list_macros.h>
 
-PLUGINLIB_EXPORT_CLASS(ground_truth_layer::GroundTruthLayer, costmap_2d::Layer)
-
 namespace ground_truth_layer
 {
 
@@ -41,6 +39,8 @@ void GroundTruthLayer::onInitialize()
 
   width_ = (unsigned int)((xmax - xmin) / resolution_);
   height_ = (unsigned int)((ymax - ymin) / resolution_);
+  auto origin_x = (xmax + xmin) / 2;
+  auto origin_y = (ymax + ymin) / 2;
 
   // (re)subscribe only when first time or the topic name changed
   bool is_resubscribed = false;
@@ -69,18 +69,44 @@ void GroundTruthLayer::onInitialize()
   }
 
   ROS_INFO("Received a %d X %d map at %f m/pix", width_, height_, resolution_);
-  mapper_.initMap(width_, height_, resolution_);
+  resizeMap(width_, height_, resolution_, origin_x, origin_y);
+  mapper_.initMap(width_, height_, resolution_, origin_x, origin_y, costmap_);
 }
 
 void GroundTruthLayer::updateMap(const sensor_msgs::LaserScanConstPtr &laser_scan,
-                                const nav_msgs::OdometryConstPtr &odometry)
+                                 const nav_msgs::OdometryConstPtr &odometry)
 {
+  auto master_costmap_ptr = layered_costmap_->getCostmap();
+
+  auto width = master_costmap_ptr->getSizeInCellsX();
+  auto height = master_costmap_ptr->getSizeInCellsY();
+  auto resolution = master_costmap_ptr->getResolution();
+  auto origin_x_meters = master_costmap_ptr->getOriginX();
+  auto origin_y_meters = master_costmap_ptr->getOriginY();
+
+  if ( width          != width_
+       || height      != height_
+       || resolution  != resolution_ )
+  {
+    width_ = width;
+    height_ = height;
+    resolution_ = resolution;
+
+    resizeMap(width_, height_, resolution_, origin_x_meters, origin_y_meters);
+    mapper_.initMap(width_, height_, resolution_, origin_x_meters, origin_y_meters, costmap_);
+
+
+    ROS_INFO(
+      "ground truth costmap resized to: %dx%d, resolution: %f, origin %f, %f",
+      width_, height_, resolution_, origin_x_meters, origin_y_meters
+    );
+  }
+
   mapper_.updateMap(laser_scan, odometry);
 }
 
 void GroundTruthLayer::reset()
 {
-  // TODO
   onInitialize();
 }
 
@@ -103,3 +129,5 @@ void GroundTruthLayer::deactivate()
 
 
 } // namespace ground_truth_layer
+
+PLUGINLIB_EXPORT_CLASS(ground_truth_layer::GroundTruthLayer, costmap_2d::Layer)

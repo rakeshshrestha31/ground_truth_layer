@@ -42,7 +42,9 @@ cv::Mat Mapper::getMapCopy()
   return map_.clone();
 }
 
-void Mapper::initMap(int width, int height, float resolution)
+void Mapper::initMap(int width, int height, float resolution,
+                     double origin_x_meters, double origin_y_meters,
+                     uint8_t *data_pointer)
 {
   boost::mutex::scoped_lock lock(mutex_);
   resolution_ = resolution;
@@ -50,8 +52,12 @@ void Mapper::initMap(int width, int height, float resolution)
   width_ = width;
   height_ = height;
 
+  getMapOffset(origin_x_meters, origin_y_meters, width_, height_, resolution_, origin_x_, origin_y_);
+  ROS_INFO("ground truth map offset: (%d, %d)", origin_x_, origin_y_);
+
   // TODO: maintain previous map if it exists
-  map_ = cv::Mat(height_, width_, CV_8UC1, cv::Scalar(costmap_2d::NO_INFORMATION));
+  map_ = cv::Mat(height_, width_, CV_8UC1, data_pointer);
+  map_ = cv::Scalar(costmap_2d::NO_INFORMATION);
 
   is_initialized_ = true;
 }
@@ -128,7 +134,7 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
           for (int col_offset = -LASER_BEAM_WIDTH; col_offset <= LASER_BEAM_WIDTH; col_offset++) {
             int x = laser_grid_x + col_offset;
             if (x >= 0 && x < map_.cols) {
-//              map_.at<uint8_t>(y, x) = 0; // costmap_2d::LETHAL_OBSTACLE;
+              map_.at<uint8_t>(y, x) = costmap_2d::LETHAL_OBSTACLE;
             }
           }
         }
@@ -143,10 +149,24 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
 
 /*************** Utilities ***************/
 
+void Mapper::getMapOffset(double origin_x_meters, double origin_y_meters,
+                          double width, double height, double resolution,
+                          int &offset_x, int &offset_y)
+{
+  auto groundtruth_origin_map_x = -width / 2;
+  auto groundtruth_origin_map_y = -height / 2;
+
+  auto costmap_origin_map_x = origin_x_meters / resolution;
+  auto costmap_origin_map_y = origin_y_meters / resolution;
+
+  offset_x = (int)std::round(costmap_origin_map_x - groundtruth_origin_map_x);
+  offset_y = (int)std::round(costmap_origin_map_y - groundtruth_origin_map_y);
+};
+
 int Mapper::convertToGridCoords(double x, double y, int &grid_x, int &grid_y)
 {
-  grid_x = (int)round( x/resolution_ + width_/ 2 );
-  grid_y = (int)round( y/resolution_ + height_/2 );
+  grid_x = (int)round( x/resolution_ + width_/ 2 - origin_x_ );
+  grid_y = (int)round( y/resolution_ + height_/2 - origin_y_ );
 
   if (
     grid_x < 0 ||

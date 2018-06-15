@@ -16,7 +16,9 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 ## System dependencies are found with CMake's conventions
-# find_package(Boost REQUIRED COMPONENTS system)
+find_package(Boost REQUIRED COMPONENTS system thread)
+find_package(stage 4.3 REQUIRED)
+
 
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -120,11 +122,14 @@ catkin_package(
 include_directories(
  include
   ${catkin_INCLUDE_DIRS}
+  ${STAGE_INCLUDE_DIRS}
+  ${Boost_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
 add_library(ground_truth_layer
   plugins/ground_truth_layer.cpp
+  src/mapper.cpp
 )
 
 ## Add cmake target dependencies of the library
@@ -134,6 +139,8 @@ add_dependencies(ground_truth_layer ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin
 
 target_link_libraries(ground_truth_layer
   ${catkin_LIBRARIES}
+  ${Boost_LIBRARIES}
+  ${STAGE_LIBRARIES}
 )
 
 ## Declare a C++ executable

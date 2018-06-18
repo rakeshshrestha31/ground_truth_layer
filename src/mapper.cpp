@@ -5,7 +5,6 @@
 #include <ground_truth_layer/mapper.h>
 
 #include <ros/ros.h>
-#include <costmap_2d/cost_values.h>
 #include <tf/tf.h>
 
 #include <iostream>
@@ -26,12 +25,12 @@ Mapper::Mapper() : is_initialized_(false)
 
 }
 
-void Mapper::reset()
+void Mapper::reset(unsigned char unknown_cost_value)
 {
   boost::mutex::scoped_lock lock(mutex_);
   if (!map_.empty())
   {
-    map_ = cv::Scalar(costmap_2d::NO_INFORMATION);
+    map_ = cv::Scalar(unknown_cost_value);
   }
   is_initialized_ = false;
 }
@@ -44,7 +43,7 @@ cv::Mat Mapper::getMapCopy()
 
 void Mapper::initMap(int width, int height, float resolution,
                      double origin_x_meters, double origin_y_meters,
-                     uint8_t *data_pointer)
+                     uint8_t *data_pointer, unsigned char unknown_cost_value)
 {
   boost::mutex::scoped_lock lock(mutex_);
   resolution_ = resolution;
@@ -57,7 +56,7 @@ void Mapper::initMap(int width, int height, float resolution,
 
   // TODO: maintain previous map if it exists
   map_ = cv::Mat(height_, width_, CV_8UC1, data_pointer);
-  map_ = cv::Scalar(costmap_2d::NO_INFORMATION);
+  map_ = cv::Scalar(unknown_cost_value);
 
   is_initialized_ = true;
 }
@@ -159,8 +158,9 @@ void Mapper::getMapOffset(double origin_x_meters, double origin_y_meters,
   auto costmap_origin_map_x = origin_x_meters / resolution;
   auto costmap_origin_map_y = origin_y_meters / resolution;
 
+  // y is negated because y is pointing downwards in opencv coords but upwards in costmap coords
   offset_x = (int)std::round(costmap_origin_map_x - groundtruth_origin_map_x);
-  offset_y = (int)std::round(costmap_origin_map_y - groundtruth_origin_map_y);
+  offset_y = -(int)std::round(costmap_origin_map_y - groundtruth_origin_map_y);
 };
 
 int Mapper::convertToGridCoords(double x, double y, int &grid_x, int &grid_y)

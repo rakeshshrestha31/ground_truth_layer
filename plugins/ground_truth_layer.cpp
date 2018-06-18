@@ -31,6 +31,13 @@ void GroundTruthLayer::onInitialize()
   local_nh_->param("laser_topic", laser_topic_,    std::string("scan"));
   local_nh_->param("resolution",  resolution_,     0.05);
 
+  int temp_lethal_threshold, temp_unknown_cost_value;
+  local_nh_->param("lethal_cost_threshold", temp_lethal_threshold, int(100));
+  local_nh_->param("unknown_cost_value", temp_unknown_cost_value, int(costmap_2d::NO_INFORMATION));
+
+  lethal_threshold_ = (unsigned char)std::max(std::min(temp_lethal_threshold, 100), 0);
+  unknown_cost_value_ = (unsigned char)std::min(temp_unknown_cost_value, 255);
+
   double xmin, xmax, ymin, ymax;
   local_nh_->param("xmin", xmin, -15.0);
   local_nh_->param("ymin", ymin, -15.0);

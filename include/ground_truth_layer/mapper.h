@@ -19,7 +19,7 @@
 
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/LaserScan.h>
-
+#include <costmap_2d/cost_values.h>
 
 namespace ground_truth_layer
 {
@@ -47,12 +47,17 @@ public:
    * @param width width of map in meters
    * @param height height of map in meters
    * @param resolution meters/pixel in map
+   * @param unknown_cost_value value to initialize the map with (the map is unknown at the beginning)
    */
   void initMap(int width, int height, float resolution,
                double origin_x_meters, double origin_y_meters,
-              uint8_t *pointer);
+              uint8_t *pointer, unsigned char unknown_cost_value=costmap_2d::NO_INFORMATION);
 
-  void reset();
+  /**
+   *
+   * @param unknown_cost_value value to initialize the map with (the map is unknown at the beginning)
+   */
+  void reset(unsigned char unknown_cost_value=costmap_2d::NO_INFORMATION);
 
   // @return: 1 - success, 0 - failure
   int updateMap(const sensor_msgs::LaserScanConstPtr &laser_scan, const nav_msgs::OdometryConstPtr &robot_odometry);

@@ -56,6 +56,9 @@ protected:
   unsigned int width_;    ///< @brief width of the map
   unsigned int height_;   ///< @brief height of the map
 
+  unsigned char unknown_cost_value_;    ///< @brief cost assigned to unknown cells
+  unsigned char lethal_threshold_;
+
 };
 } // namespace ground_truth_layer
 

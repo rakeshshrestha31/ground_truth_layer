@@ -42,6 +42,8 @@ public:
 
   int getHeight() { return height_; }
 
+  bool isInitialized() { return is_initialized_; }
+
   /**
    *
    * @param width width of map in meters
@@ -51,7 +53,7 @@ public:
    */
   void initMap(int width, int height, float resolution,
                double origin_x_meters, double origin_y_meters,
-              uint8_t *pointer, unsigned char unknown_cost_value=costmap_2d::NO_INFORMATION);
+               uint8_t *pointer, unsigned char unknown_cost_value=costmap_2d::NO_INFORMATION);
 
   /**
    *

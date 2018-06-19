@@ -20,7 +20,7 @@
 
 namespace ground_truth_layer
 {
-class GroundTruthLayer : public costmap_2d::StaticLayer
+class GroundTruthLayer : public costmap_2d::Layer, public costmap_2d::Costmap2D
 {
 public:
   GroundTruthLayer();
@@ -31,6 +31,14 @@ public:
   virtual void deactivate();
   virtual void reset();
 
+  virtual void updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, int min_j, int max_i, int max_j);
+
+  virtual void updateBounds(double robot_x, double robot_y, double robot_yaw, double* min_x,
+                                              double* min_y, double* max_x, double* max_y);
+  virtual void matchSize();
+
+  bool isDiscretized() { return true; }
+
   /**
    *
    * @param laser_scan
@@ -38,6 +46,11 @@ public:
    */
   void updateMap(const sensor_msgs::LaserScanConstPtr &laser_scan,
                  const nav_msgs::OdometryConstPtr &odometry);
+
+  /**
+   * @brief fixes map size with respect to master costmap
+   */
+  void fixMapSize();
 
 protected:
   ros::NodeHandlePtr local_nh_;
@@ -55,10 +68,14 @@ protected:
   double resolution_;
   unsigned int width_;    ///< @brief width of the map
   unsigned int height_;   ///< @brief height of the map
+  double origin_x_;
+  double origin_y_;
 
   unsigned char unknown_cost_value_;    ///< @brief cost assigned to unknown cells
   unsigned char lethal_threshold_;
 
+  void reconfigureCB(costmap_2d::GenericPluginConfig &config, uint32_t level);
+  dynamic_reconfigure::Server<costmap_2d::GenericPluginConfig> *dsrv_;
 };
 } // namespace ground_truth_layer
 

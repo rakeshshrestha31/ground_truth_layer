@@ -41,6 +41,31 @@ cv::Mat Mapper::getMapCopy()
   return map_.clone();
 }
 
+void Mapper::clearUpdatedPoints()
+{
+  boost::mutex::scoped_lock lock(mutex_);
+  updated_points_.clear();
+}
+
+cv::Rect_<double> Mapper::getUpdatedPointsROI()
+{
+  boost::mutex::scoped_lock lock(mutex_);
+  if (!updated_points_.empty())
+  {
+    auto grid_coord_roi = cv::boundingRect(updated_points_);
+
+    double x1, y1, x2, y2;
+    convertToWorldCoords(grid_coord_roi.x, grid_coord_roi.y, x1, y1);
+    convertToWorldCoords(grid_coord_roi.x + grid_coord_roi.width, grid_coord_roi.y + grid_coord_roi.height, x2, y2);
+
+    return cv::Rect_<double>(x1, y1, x2 - x1, y2 - y1);
+  }
+  else
+  {
+    return cv::Rect_<double>(1e30, 1e30, -2e30, -2e30);
+  }
+}
+
 void Mapper::initMap(int width, int height, float resolution,
                      double origin_x_meters, double origin_y_meters,
                      uint8_t *data_pointer, unsigned char unknown_cost_value)
@@ -134,6 +159,7 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
             int x = laser_grid_x + col_offset;
             if (x >= 0 && x < map_.cols) {
               map_.at<uint8_t>(y, x) = costmap_2d::LETHAL_OBSTACLE;
+              updated_points_.emplace_back(x, y);
             }
           }
         }
@@ -179,22 +205,30 @@ int Mapper::convertToGridCoords(double x, double y, int &grid_x, int &grid_y)
     return 1;
   }
 }
+int Mapper::convertToWorldCoords(int grid_x, int grid_y, double &x, double &y)
+{
+  x = (grid_x + origin_x_ - width_/2.0) * resolution_;
+  y = (grid_y + origin_y_ - height_/2.0) * resolution_;
+
+  return 1;
+}
+
 
 int Mapper::drawScanLine(int x1, int y1, int x2, int y2)
 {
+  std::vector<cv::Point> points;
+
   cv::LineIterator it(map_, cv::Point(x1, y1), cv::Point(x2, y2));
 
-  // TODO: return only the pixel positions without modifying the map (for parallelization)
   for(int i = 0; i < it.count; i++, ++it) {
     auto point = it.pos();
     if (point.x >= 0 && point.x < map_.cols
       && point.y >= 0 && point.y < map_.rows)
     {
-      map_.at<uint8_t>(it.pos()) = costmap_2d::FREE_SPACE;
+      map_.at<uint8_t>(point) = costmap_2d::FREE_SPACE;
+      updated_points_.push_back(point);
     }
   }
-
-  return 0;
 }
 
 Mapper::robot_pose_t Mapper::poseFromGeometryPoseMsg(const geometry_msgs::Pose &pose_msg)

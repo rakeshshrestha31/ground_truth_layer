@@ -11,7 +11,7 @@ PLUGINLIB_EXPORT_CLASS(ground_truth_layer::GroundTruthLayer, costmap_2d::Layer)
 namespace ground_truth_layer
 {
 
-GroundTruthLayer::GroundTruthLayer()
+GroundTruthLayer::GroundTruthLayer() : is_reinitialized_(false)
 {
   // TODO
 }
@@ -40,16 +40,13 @@ void GroundTruthLayer::onInitialize()
   lethal_threshold_ = (unsigned char)std::max(std::min(temp_lethal_threshold, 100), 0);
   unknown_cost_value_ = (unsigned char)std::min(temp_unknown_cost_value, 255);
 
-  double xmin, xmax, ymin, ymax;
-  local_nh_->param("xmin", xmin, -15.0);
-  local_nh_->param("ymin", ymin, -15.0);
-  local_nh_->param("xmax", xmax, 15.0);
-  local_nh_->param("ymax", ymax, 15.0);
+  local_nh_->param("xmin", origin_x_, -15.0);
+  local_nh_->param("ymin", origin_y_, -15.0);
+  local_nh_->param("xmax", x_max_, 15.0);
+  local_nh_->param("ymax", y_max_, 15.0);
 
-  width_ = (unsigned int)((xmax - xmin) / resolution_);
-  height_ = (unsigned int)((ymax - ymin) / resolution_);
-  origin_x_ = xmin;
-  origin_y_ = ymin;
+  width_ = (unsigned int)((x_max_ - origin_x_) / resolution_);
+  height_ = (unsigned int)((y_max_ - origin_y_) / resolution_);
 
   // (re)subscribe only when first time or the topic name changed
   bool is_resubscribed = false;
@@ -77,20 +74,6 @@ void GroundTruthLayer::onInitialize()
     topic_sync_->registerCallback(boost::bind(&GroundTruthLayer::updateMap, this, _1, _2));
   }
 
-//  auto master_costmap_ptr = layered_costmap_->getCostmap();
-//  if ( master_costmap_ptr->getSizeInCellsX()    != width_
-//       || master_costmap_ptr->getSizeInCellsY() != height_
-//       || master_costmap_ptr->getResolution()   != resolution_
-//       || master_costmap_ptr->getOriginX()      != origin_x_
-//       || master_costmap_ptr->getOriginY()      != origin_y_
-//    )
-//  {
-//    resizeMap(width_, height_, resolution_, origin_x_, origin_y_);
-//    layered_costmap_->resizeMap(width_, height_, resolution_, origin_x_, origin_y_);
-//  }
-
-//  layered_costmap_->resizeMap(width_, height_, resolution_, origin_x_, origin_y_);
-//  resizeMap(width_, height_, resolution_, origin_x_, origin_y_);
   fixMapSize();
   mapper_.initMap(width_, height_, resolution_, origin_x_, origin_y_, costmap_);
 
@@ -114,7 +97,7 @@ void GroundTruthLayer::fixMapSize()
   auto origin_y_meters = master_costmap_ptr->getOriginY();
 
   if (
-    (width          != width_
+    (width         != width_
     || height      != height_
     || resolution  != resolution_
     || origin_x_meters != origin_x_
@@ -122,13 +105,10 @@ void GroundTruthLayer::fixMapSize()
     && (!layered_costmap_->isSizeLocked())
     )
   {
-//    width_ = width;
-//    height_ = height;
-//    resolution_ = resolution;
-
     layered_costmap_->resizeMap(width_, height_, resolution_, origin_x_, origin_y_);
     resizeMap(width_, height_, resolution_, origin_x_, origin_y_);
     mapper_.initMap(width_, height_, resolution_, origin_x_, origin_y_, costmap_);
+    is_reinitialized_ = true;
 
     ROS_INFO(
       "ground truth costmap resized to: %dx%d, resolution: %f, origin %f, %f from %dx%d, %f, (%f, %f)",
@@ -138,10 +118,48 @@ void GroundTruthLayer::fixMapSize()
   }
 }
 
+void GroundTruthLayer::matchSize()
+{
+  auto master = layered_costmap_->getCostmap();
+  auto width = master->getSizeInCellsX();
+  auto height = master->getSizeInCellsY();
+  auto resolution = master->getResolution();
+  auto origin_x = master->getOriginX();
+  auto origin_y = master->getOriginY();
+
+  if (
+    (width         != width_
+     || height      != height_
+     || resolution  != resolution_
+     || origin_x != origin_x_
+     || origin_y != origin_y_)
+    && (!layered_costmap_->isSizeLocked())
+    )
+  {
+//    ROS_INFO(
+//      "matchSize(): ground truth costmap resized from: %dx%d, resolution: %f, origin %f, %f to %dx%d, %f, (%f, %f)",
+//      width_, height_, resolution_, origin_x_, origin_y_,
+//      width, height, resolution, origin_x, origin_y
+//    );
+//
+//    width_ = width;
+//    height_ = height;
+//    resolution_ = resolution;
+//
+//    layered_costmap_->resizeMap(width_, height_, resolution_, origin_x_, origin_y_);
+//    resizeMap(width_, height_, resolution_, origin_x_, origin_y_);
+//    mapper_.initMap(width_, height_, resolution_, origin_x_, origin_y_, costmap_);
+  }
+}
+
+
 void GroundTruthLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, int min_j, int max_i, int max_j)
 {
-  ROS_INFO("update cost requested");
+  ROS_DEBUG("update cost requested (%d, %d), (%d, %d)", min_i, min_j, max_i, max_j);
   if (!enabled_)
+    return;
+
+  if (!costmap_)
     return;
 
   for (int j = min_j; j < max_j; j++)
@@ -162,25 +180,26 @@ void GroundTruthLayer::updateBounds(double robot_x, double robot_y, double robot
   if (!enabled_)
     return;
 
-  double mark_x = robot_x + cos(robot_yaw), mark_y = robot_y + sin(robot_yaw);
-  unsigned int mx;
-  unsigned int my;
-  if(worldToMap(mark_x, mark_y, mx, my))
+  if (is_reinitialized_)
   {
-    setCost(mx, my, costmap_2d::LETHAL_OBSTACLE);
+    *min_x = origin_x_;
+    *min_y = origin_y_;
+
+    *max_x = x_max_;
+    *max_y = y_max_;
+    is_reinitialized_ = false;
+  }
+  else
+  {
+    auto updated_points_roi = mapper_.getUpdatedPointsROI();
+    mapper_.clearUpdatedPoints();
+
+    *min_x = std::min(*min_x, updated_points_roi.x);
+    *min_y = std::min(*min_y, updated_points_roi.y);
+    *max_x = std::max(*max_x, updated_points_roi.x + updated_points_roi.width);
+    *max_y = std::max(*max_y, updated_points_roi.y + updated_points_roi.height);
   }
 
-  *min_x = std::min(*min_x, mark_x);
-  *min_y = std::min(*min_y, mark_y);
-  *max_x = std::max(*max_x, mark_x);
-  *max_y = std::max(*max_y, mark_y);
-}
-
-void GroundTruthLayer::matchSize()
-{
-  auto master = layered_costmap_->getCostmap();
-  resizeMap(master->getSizeInCellsX(), master->getSizeInCellsY(), master->getResolution(),
-            master->getOriginX(), master->getOriginY());
 }
 
 void GroundTruthLayer::updateMap(const sensor_msgs::LaserScanConstPtr &laser_scan,

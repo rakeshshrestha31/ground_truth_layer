@@ -68,6 +68,17 @@ public:
 
   int drawScanLine(int x1, int y1, int x2, int y2);
 
+  /**
+   * @brief clear updated_points_ member
+   */
+  void clearUpdatedPoints();
+
+  /**
+   *
+   * @return ROI of all the updated points
+   */
+  cv::Rect_<double> getUpdatedPointsROI();
+
   // utilities
   /**
    * @brief find the offset in the map to be applied based on costmap offset
@@ -84,6 +95,11 @@ public:
    * @brief convert coords from continuous world coordinate to discrete image coord
    */
   int convertToGridCoords(double x, double y, int &grid_x, int &grid_y);
+
+  /**
+   * @brief convert coords from continuous world coordinate to discrete image coord
+   */
+  int convertToWorldCoords(int grid_x, int grid_y, double &x, double &y);
 
   static robot_pose_t poseFromGeometryPoseMsg(const geometry_msgs::Pose &pose_msg);
 
@@ -104,6 +120,8 @@ protected:
   int origin_y_;
 
   robot_pose_t robot_pose_;
+
+  std::vector<cv::Point> updated_points_; ///< @brief updated points in the map
 };
 } // namespace ground_truth_layer
 #endif //GROUND_TRUTH_LAYER_MAPPER_H

@@ -68,11 +68,16 @@ protected:
   double resolution_;
   unsigned int width_;    ///< @brief width of the map
   unsigned int height_;   ///< @brief height of the map
+
   double origin_x_;
   double origin_y_;
+  double x_max_;
+  double y_max_;
 
   unsigned char unknown_cost_value_;    ///< @brief cost assigned to unknown cells
   unsigned char lethal_threshold_;
+
+  bool is_reinitialized_;
 
   void reconfigureCB(costmap_2d::GenericPluginConfig &config, uint32_t level);
   dynamic_reconfigure::Server<costmap_2d::GenericPluginConfig> *dsrv_;

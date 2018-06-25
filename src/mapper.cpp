@@ -14,6 +14,7 @@
 #include <ctime>
 #include <chrono>
 
+
 // how big is the obstacle given by each laser beam (in pixel)
 #define LASER_BEAM_WIDTH 1
 
@@ -22,7 +23,6 @@ namespace ground_truth_layer
 
 Mapper::Mapper() : is_initialized_(false)
 {
-
 }
 
 void Mapper::reset(unsigned char unknown_cost_value)
@@ -115,8 +115,18 @@ int Mapper::updateMap(const sensor_msgs::LaserScanConstPtr &laser_scan, const na
   return 1;
 }
 
+void Mapper::preAllocateMemory(const sensor_msgs::LaserScanConstPtr &laser_scan)
+{
+  auto beam_num = laser_scan->ranges.size();
+  int beam_pixel = (int) (laser_scan->range_max / resolution_) + 1;
+  auto num = beam_num * beam_pixel + beam_num * (LASER_BEAM_WIDTH * 2 + 1);
+  updated_points_.reserve(num);
+}
+
 int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, robot_pose_t robot_pose)
 {
+  // Pre-allocate memory for updated_points_ to avoid locks in multiple threads
+  preAllocateMemory(laser_scan);
   // get the data
   const auto &scan = laser_scan->ranges;
 
@@ -124,7 +134,7 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
   if( sample_count < 1 )
     return 1;
 
-  auto laser_beam_orientation = robot_pose.a + laser_scan->angle_min;
+  auto laser_beam_orientation_start = robot_pose.a + laser_scan->angle_min;
 
   int robot_grid_x, robot_grid_y;
   if (!convertToGridCoords(robot_pose.x, robot_pose.y, robot_grid_x, robot_grid_y))
@@ -133,8 +143,11 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
     return 0;
   }
 
-  for (uint32_t i = 0; i < sample_count; i++) {
-    // normalize the angle
+  uint32_t i = 0;
+  #pragma omp parallel for num_threads(8)
+  for (i = 0; i < sample_count; i++) {
+    // get beam angle and normalize the angle
+    auto laser_beam_orientation =laser_beam_orientation_start + i* laser_scan->angle_increment;
     laser_beam_orientation = atan2(sin(laser_beam_orientation), cos(laser_beam_orientation));
 
     double laser_x, laser_y;
@@ -143,30 +156,26 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
     laser_x = robot_pose.x +  scan[i] * cos(laser_beam_orientation);
     laser_y = robot_pose.y +  scan[i] * sin(laser_beam_orientation);
 
-    if (!convertToGridCoords(laser_x, laser_y, laser_grid_x, laser_grid_y)) {
-      continue;
-    }
+    if (convertToGridCoords(laser_x, laser_y, laser_grid_x, laser_grid_y)) {
 
-    // TODO: parallelize ray casting
-    drawScanLine(robot_grid_x, robot_grid_y, laser_grid_x, laser_grid_y);
+      drawScanLine(robot_grid_x, robot_grid_y, laser_grid_x, laser_grid_y);
 
-    if ( scan[i] < (laser_scan->range_max - std::numeric_limits<float>::min()) ) {
-      // draw obstacle of size (2.LASER_BEAM_WIDTH X 2.LASER_BEAM_WIDTH) pixels
-      for (int row_offset = -LASER_BEAM_WIDTH; row_offset <= LASER_BEAM_WIDTH; row_offset++) {
-        int y = laser_grid_y + row_offset;
-        if (y >= 0 && y < map_.rows) {
-          for (int col_offset = -LASER_BEAM_WIDTH; col_offset <= LASER_BEAM_WIDTH; col_offset++) {
-            int x = laser_grid_x + col_offset;
-            if (x >= 0 && x < map_.cols) {
-              map_.at<uint8_t>(y, x) = costmap_2d::LETHAL_OBSTACLE;
-              updated_points_.emplace_back(x, y);
-            }
+      if ( scan[i] < (laser_scan->range_max - std::numeric_limits<float>::min()) ) {
+          // draw obstacle of size (2.LASER_BEAM_WIDTH X 2.LASER_BEAM_WIDTH) pixels
+          for (int row_offset = -LASER_BEAM_WIDTH; row_offset <= LASER_BEAM_WIDTH; row_offset++) {
+              int y = laser_grid_y + row_offset;
+              if (y >= 0 && y < map_.rows) {
+                  for (int col_offset = -LASER_BEAM_WIDTH; col_offset <= LASER_BEAM_WIDTH; col_offset++) {
+                      int x = laser_grid_x + col_offset;
+                      if (x >= 0 && x < map_.cols) {
+                          map_.at<uint8_t>(y, x) = costmap_2d::LETHAL_OBSTACLE;
+                          updated_points_.emplace_back(x, y);
+                      }
+                  }
+              }
           }
-        }
       }
     }
-
-    laser_beam_orientation += laser_scan->angle_increment;
   }
 
   return 1;
@@ -205,6 +214,7 @@ int Mapper::convertToGridCoords(double x, double y, int &grid_x, int &grid_y)
     return 1;
   }
 }
+
 int Mapper::convertToWorldCoords(int grid_x, int grid_y, double &x, double &y)
 {
   x = (grid_x + origin_x_ - width_/2.0) * resolution_;
@@ -213,8 +223,7 @@ int Mapper::convertToWorldCoords(int grid_x, int grid_y, double &x, double &y)
   return 1;
 }
 
-
-int Mapper::drawScanLine(int x1, int y1, int x2, int y2)
+inline int Mapper::drawScanLine(int x1, int y1, int x2, int y2)
 {
   std::vector<cv::Point> points;
 

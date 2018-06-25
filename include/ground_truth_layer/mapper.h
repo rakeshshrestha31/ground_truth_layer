@@ -21,6 +21,8 @@
 #include <sensor_msgs/LaserScan.h>
 #include <costmap_2d/cost_values.h>
 
+#include <omp.h>
+
 namespace ground_truth_layer
 {
 class Mapper
@@ -122,6 +124,13 @@ protected:
   robot_pose_t robot_pose_;
 
   std::vector<cv::Point> updated_points_; ///< @brief updated points in the map
+
+private:
+  /**
+   * @brief pre-allocate memory for updated_points_
+   * @param laser_scan the laser_scan information
+   */
+  void preAllocateMemory(const sensor_msgs::LaserScanConstPtr &laser_scan);
 };
 } // namespace ground_truth_layer
 #endif //GROUND_TRUTH_LAYER_MAPPER_H

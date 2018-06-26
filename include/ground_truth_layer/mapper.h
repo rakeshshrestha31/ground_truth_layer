@@ -22,6 +22,7 @@
 #include <costmap_2d/cost_values.h>
 
 #include <omp.h>
+#include <atomic>
 
 namespace ground_truth_layer
 {
@@ -37,6 +38,7 @@ public:
   } robot_pose_t;
 
   Mapper();
+  ~Mapper();
 
   cv::Mat getMapCopy();
 
@@ -123,14 +125,13 @@ protected:
 
   robot_pose_t robot_pose_;
 
-  std::vector<cv::Point> updated_points_; ///< @brief updated points in the map
+  cv::Point updatedAreaMin_;
+  cv::Point updatedAreaMax_;
+
+  bool validUpdate_ = false;
 
 private:
-  /**
-   * @brief pre-allocate memory for updated_points_
-   * @param laser_scan the laser_scan information
-   */
-  void preAllocateMemory(const sensor_msgs::LaserScanConstPtr &laser_scan);
+  void minMaxPoints(const cv::Point& p, cv::Point& min, cv::Point& max);
 };
 } // namespace ground_truth_layer
 #endif //GROUND_TRUTH_LAYER_MAPPER_H

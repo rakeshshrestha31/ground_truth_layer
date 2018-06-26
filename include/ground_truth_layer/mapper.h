@@ -38,7 +38,6 @@ public:
   } robot_pose_t;
 
   Mapper();
-  ~Mapper();
 
   cv::Mat getMapCopy();
 
@@ -73,9 +72,9 @@ public:
   int drawScanLine(int x1, int y1, int x2, int y2);
 
   /**
-   * @brief clear updated_points_ member
+   * @brief reset updated Area
    */
-  void clearUpdatedPoints();
+  void resetUpdatedArea();
 
   /**
    *
@@ -128,7 +127,7 @@ protected:
   cv::Point updatedAreaMin_;
   cv::Point updatedAreaMax_;
 
-  bool validUpdate_ = false;
+  bool isValidUpdateArea();
 
 private:
   void minMaxPoints(const cv::Point& p, cv::Point& min, cv::Point& max);

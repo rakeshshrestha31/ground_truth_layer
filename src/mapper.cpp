@@ -27,10 +27,6 @@ Mapper::Mapper() : is_initialized_(false)
 {
 }
 
-Mapper::~Mapper() {
-//  delete []updated_points_;
-}
-
 void Mapper::reset(unsigned char unknown_cost_value)
 {
   boost::mutex::scoped_lock lock(mutex_);
@@ -39,6 +35,20 @@ void Mapper::reset(unsigned char unknown_cost_value)
     map_ = cv::Scalar(unknown_cost_value);
   }
   is_initialized_ = false;
+}
+
+void Mapper::resetUpdatedArea()
+{
+  updatedAreaMin_.x = INT_MAX;
+  updatedAreaMin_.y = INT_MAX;
+  updatedAreaMax_.x = INT_MIN;
+  updatedAreaMax_.y = INT_MIN;
+}
+
+bool Mapper::isValidUpdateArea()
+{
+  return !(updatedAreaMin_.x == INT_MAX || updatedAreaMin_.y == INT_MAX ||
+    updatedAreaMax_.x == INT_MIN || updatedAreaMax_.y == INT_MIN);
 }
 
 cv::Mat Mapper::getMapCopy()
@@ -50,9 +60,8 @@ cv::Mat Mapper::getMapCopy()
 cv::Rect_<double> Mapper::getUpdatedPointsROI()
 {
   boost::mutex::scoped_lock lock(mutex_);
-  if (validUpdate_)
+  if (isValidUpdateArea())
   {
-//    auto grid_coord_roi = cv::boundingRect(updated_points_);
     cv::Rect grid_coord_roi = cv::Rect(updatedAreaMin_, updatedAreaMax_);
 
     double x1, y1, x2, y2;
@@ -127,8 +136,6 @@ inline void Mapper::minMaxPoints(const cv::Point& point, cv::Point& min, cv::Poi
 
 int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, robot_pose_t robot_pose)
 {
-  validUpdate_ = false;
-
   // get the data
   const auto &scan = laser_scan->ranges;
 
@@ -163,7 +170,6 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
     cv::Point local_min = cv::Point(INT_MAX, INT_MAX), local_max = cv::Point(INT_MIN, INT_MIN);
 
     if (convertToGridCoords(laser_x, laser_y, laser_grid_x, laser_grid_y)) {
-      validUpdate_ = true;
 
       cv::LineIterator it(map_, cv::Point(robot_grid_x, robot_grid_y), cv::Point(laser_grid_x, laser_grid_y));
 
@@ -202,10 +208,10 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
     maxy = std::max(local_max.y, maxy);
   }
 
-  updatedAreaMin_.x = minx;
-  updatedAreaMin_.y = miny;
-  updatedAreaMax_.x = maxx;
-  updatedAreaMax_.y = maxy;
+  updatedAreaMin_.x = std::min(updatedAreaMin_.x, minx);
+  updatedAreaMin_.y = std::min(updatedAreaMin_.y, miny);
+  updatedAreaMax_.x = std::max(updatedAreaMax_.x, maxx);
+  updatedAreaMax_.y = std::max(updatedAreaMax_.y, maxy);
 
   return 1;
 }

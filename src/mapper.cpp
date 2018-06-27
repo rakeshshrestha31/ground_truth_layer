@@ -3,6 +3,7 @@
 //
 
 #include <ground_truth_layer/mapper.h>
+#include <ground_truth_layer/config.h>
 
 #include <ros/ros.h>
 #include <tf/tf.h>
@@ -17,8 +18,6 @@
 #include <atomic>
 #include <climits>
 
-// how big is the obstacle given by each laser beam (in pixel)
-#define LASER_BEAM_WIDTH 1
 
 namespace ground_truth_layer
 {
@@ -119,9 +118,9 @@ int Mapper::updateMap(const sensor_msgs::LaserScanConstPtr &laser_scan, const na
 
   ROS_INFO("mapper took: %f us", mapper_end_us - mapper_start_us);
   // debug
-  cv::Mat map_correct_flip;
-  cv::flip(map_, map_correct_flip, 0);
-  cv::imwrite("/tmp/gt_map.png", map_correct_flip);
+//  cv::Mat map_correct_flip;
+//  cv::flip(map_, map_correct_flip, 0);
+//  cv::imwrite("/tmp/gt_map.png", map_correct_flip);
   return 1;
 }
 
@@ -154,8 +153,8 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
 
   uint32_t i = 0;
   int minx=INT_MAX, miny=INT_MAX, maxx=INT_MIN, maxy=INT_MIN;
-
-  #pragma omp parallel for num_threads(8) reduction(min:minx) reduction(min:miny) reduction(max:maxx) reduction(max:maxy)
+  
+  #pragma omp parallel for num_threads(NUM_MAPPING_THREADS) reduction(min:minx) reduction(min:miny) reduction(max:maxx) reduction(max:maxy)
   for (i = 0; i < sample_count; i++) {
     // get beam angle and normalize the angle
     auto laser_beam_orientation =laser_beam_orientation_start + i* laser_scan->angle_increment;

@@ -21,6 +21,9 @@
 #include <sensor_msgs/LaserScan.h>
 #include <costmap_2d/cost_values.h>
 
+#include <omp.h>
+#include <atomic>
+
 namespace ground_truth_layer
 {
 class Mapper
@@ -69,9 +72,9 @@ public:
   int drawScanLine(int x1, int y1, int x2, int y2);
 
   /**
-   * @brief clear updated_points_ member
+   * @brief reset updated Area
    */
-  void clearUpdatedPoints();
+  void resetUpdatedArea();
 
   /**
    *
@@ -121,7 +124,13 @@ protected:
 
   robot_pose_t robot_pose_;
 
-  std::vector<cv::Point> updated_points_; ///< @brief updated points in the map
+  cv::Point updatedAreaMin_;
+  cv::Point updatedAreaMax_;
+
+  bool isValidUpdateArea();
+
+private:
+  void minMaxPoints(const cv::Point& p, cv::Point& min, cv::Point& max);
 };
 } // namespace ground_truth_layer
 #endif //GROUND_TRUTH_LAYER_MAPPER_H

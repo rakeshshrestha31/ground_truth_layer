@@ -3,6 +3,7 @@
 //
 
 #include <ground_truth_layer/mapper.h>
+#include <ground_truth_layer/config.h>
 
 #include <ros/ros.h>
 #include <tf/tf.h>
@@ -14,15 +15,15 @@
 #include <ctime>
 #include <chrono>
 
-// how big is the obstacle given by each laser beam (in pixel)
-#define LASER_BEAM_WIDTH 1
+#include <atomic>
+#include <climits>
+
 
 namespace ground_truth_layer
 {
 
 Mapper::Mapper() : is_initialized_(false)
 {
-
 }
 
 void Mapper::reset(unsigned char unknown_cost_value)
@@ -35,24 +36,32 @@ void Mapper::reset(unsigned char unknown_cost_value)
   is_initialized_ = false;
 }
 
+void Mapper::resetUpdatedArea()
+{
+  updatedAreaMin_.x = INT_MAX;
+  updatedAreaMin_.y = INT_MAX;
+  updatedAreaMax_.x = INT_MIN;
+  updatedAreaMax_.y = INT_MIN;
+}
+
+bool Mapper::isValidUpdateArea()
+{
+  return !(updatedAreaMin_.x == INT_MAX || updatedAreaMin_.y == INT_MAX ||
+    updatedAreaMax_.x == INT_MIN || updatedAreaMax_.y == INT_MIN);
+}
+
 cv::Mat Mapper::getMapCopy()
 {
   boost::mutex::scoped_lock lock(mutex_);
   return map_.clone();
 }
 
-void Mapper::clearUpdatedPoints()
-{
-  boost::mutex::scoped_lock lock(mutex_);
-  updated_points_.clear();
-}
-
 cv::Rect_<double> Mapper::getUpdatedPointsROI()
 {
   boost::mutex::scoped_lock lock(mutex_);
-  if (!updated_points_.empty())
+  if (isValidUpdateArea())
   {
-    auto grid_coord_roi = cv::boundingRect(updated_points_);
+    cv::Rect grid_coord_roi = cv::Rect(updatedAreaMin_, updatedAreaMax_);
 
     double x1, y1, x2, y2;
     convertToWorldCoords(grid_coord_roi.x, grid_coord_roi.y, x1, y1);
@@ -109,10 +118,19 @@ int Mapper::updateMap(const sensor_msgs::LaserScanConstPtr &laser_scan, const na
 
   ROS_INFO("mapper took: %f us", mapper_end_us - mapper_start_us);
   // debug
-  cv::Mat map_correct_flip;
-  cv::flip(map_, map_correct_flip, 0);
-  cv::imwrite("/tmp/gt_map.png", map_correct_flip);
+//  cv::Mat map_correct_flip;
+//  cv::flip(map_, map_correct_flip, 0);
+//  cv::imwrite("/tmp/gt_map.png", map_correct_flip);
   return 1;
+}
+
+inline void Mapper::minMaxPoints(const cv::Point& point, cv::Point& min, cv::Point& max)
+{
+  min.x = std::min(point.x, min.x);
+  min.y = std::min(point.y, min.y);
+
+  max.x = std::max(point.x, max.x);
+  max.y = std::max(point.y, max.y);
 }
 
 int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, robot_pose_t robot_pose)
@@ -124,7 +142,7 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
   if( sample_count < 1 )
     return 1;
 
-  auto laser_beam_orientation = robot_pose.a + laser_scan->angle_min;
+  auto laser_beam_orientation_start = robot_pose.a + laser_scan->angle_min;
 
   int robot_grid_x, robot_grid_y;
   if (!convertToGridCoords(robot_pose.x, robot_pose.y, robot_grid_x, robot_grid_y))
@@ -133,8 +151,13 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
     return 0;
   }
 
-  for (uint32_t i = 0; i < sample_count; i++) {
-    // normalize the angle
+  uint32_t i = 0;
+  int minx=INT_MAX, miny=INT_MAX, maxx=INT_MIN, maxy=INT_MIN;
+  
+  #pragma omp parallel for num_threads(NUM_MAPPING_THREADS) reduction(min:minx) reduction(min:miny) reduction(max:maxx) reduction(max:maxy)
+  for (i = 0; i < sample_count; i++) {
+    // get beam angle and normalize the angle
+    auto laser_beam_orientation =laser_beam_orientation_start + i* laser_scan->angle_increment;
     laser_beam_orientation = atan2(sin(laser_beam_orientation), cos(laser_beam_orientation));
 
     double laser_x, laser_y;
@@ -143,31 +166,51 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
     laser_x = robot_pose.x +  scan[i] * cos(laser_beam_orientation);
     laser_y = robot_pose.y +  scan[i] * sin(laser_beam_orientation);
 
-    if (!convertToGridCoords(laser_x, laser_y, laser_grid_x, laser_grid_y)) {
-      continue;
-    }
+    cv::Point local_min = cv::Point(INT_MAX, INT_MAX), local_max = cv::Point(INT_MIN, INT_MIN);
 
-    // TODO: parallelize ray casting
-    drawScanLine(robot_grid_x, robot_grid_y, laser_grid_x, laser_grid_y);
+    if (convertToGridCoords(laser_x, laser_y, laser_grid_x, laser_grid_y)) {
 
-    if ( scan[i] < (laser_scan->range_max - std::numeric_limits<float>::min()) ) {
-      // draw obstacle of size (2.LASER_BEAM_WIDTH X 2.LASER_BEAM_WIDTH) pixels
-      for (int row_offset = -LASER_BEAM_WIDTH; row_offset <= LASER_BEAM_WIDTH; row_offset++) {
-        int y = laser_grid_y + row_offset;
-        if (y >= 0 && y < map_.rows) {
-          for (int col_offset = -LASER_BEAM_WIDTH; col_offset <= LASER_BEAM_WIDTH; col_offset++) {
-            int x = laser_grid_x + col_offset;
-            if (x >= 0 && x < map_.cols) {
-              map_.at<uint8_t>(y, x) = costmap_2d::LETHAL_OBSTACLE;
-              updated_points_.emplace_back(x, y);
+      cv::LineIterator it(map_, cv::Point(robot_grid_x, robot_grid_y), cv::Point(laser_grid_x, laser_grid_y));
+
+      // for free space
+      for(int j = 0; j < it.count; j++, ++it) {
+        auto point = it.pos();
+        if (point.x >= 0 && point.x < map_.cols
+            && point.y >= 0 && point.y < map_.rows)
+        {
+          map_.at<uint8_t>(point) = costmap_2d::FREE_SPACE;
+          minMaxPoints(point, local_min, local_max);
+        }
+      }
+
+      // for obstacle space
+      if ( scan[i] < (laser_scan->range_max - std::numeric_limits<float>::min()) ) {
+          // draw obstacle of size (2.LASER_BEAM_WIDTH X 2.LASER_BEAM_WIDTH) pixels
+        for (int row_offset = -LASER_BEAM_WIDTH; row_offset <= LASER_BEAM_WIDTH; row_offset++) {
+          int y = laser_grid_y + row_offset;
+          if (y >= 0 && y < map_.rows) {
+            for (int col_offset = -LASER_BEAM_WIDTH; col_offset <= LASER_BEAM_WIDTH; col_offset++) {
+              int x = laser_grid_x + col_offset;
+              if (x >= 0 && x < map_.cols) {
+                cv::Point point(x, y);
+                map_.at<uint8_t>(point) = costmap_2d::LETHAL_OBSTACLE;
+                minMaxPoints(point, local_min, local_max);
+              }
             }
           }
         }
       }
     }
-
-    laser_beam_orientation += laser_scan->angle_increment;
+    minx = std::min(local_min.x, minx);
+    miny = std::min(local_min.y, miny);
+    maxx = std::max(local_max.x, maxx);
+    maxy = std::max(local_max.y, maxy);
   }
+
+  updatedAreaMin_.x = std::min(updatedAreaMin_.x, minx);
+  updatedAreaMin_.y = std::min(updatedAreaMin_.y, miny);
+  updatedAreaMax_.x = std::max(updatedAreaMax_.x, maxx);
+  updatedAreaMax_.y = std::max(updatedAreaMax_.y, maxy);
 
   return 1;
 }
@@ -205,30 +248,13 @@ int Mapper::convertToGridCoords(double x, double y, int &grid_x, int &grid_y)
     return 1;
   }
 }
+
 int Mapper::convertToWorldCoords(int grid_x, int grid_y, double &x, double &y)
 {
   x = (grid_x + origin_x_ - width_/2.0) * resolution_;
   y = (grid_y + origin_y_ - height_/2.0) * resolution_;
 
   return 1;
-}
-
-
-int Mapper::drawScanLine(int x1, int y1, int x2, int y2)
-{
-  std::vector<cv::Point> points;
-
-  cv::LineIterator it(map_, cv::Point(x1, y1), cv::Point(x2, y2));
-
-  for(int i = 0; i < it.count; i++, ++it) {
-    auto point = it.pos();
-    if (point.x >= 0 && point.x < map_.cols
-      && point.y >= 0 && point.y < map_.rows)
-    {
-      map_.at<uint8_t>(point) = costmap_2d::FREE_SPACE;
-      updated_points_.push_back(point);
-    }
-  }
 }
 
 Mapper::robot_pose_t Mapper::poseFromGeometryPoseMsg(const geometry_msgs::Pose &pose_msg)

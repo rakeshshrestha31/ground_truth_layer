@@ -192,7 +192,7 @@ void GroundTruthLayer::updateBounds(double robot_x, double robot_y, double robot
   else
   {
     auto updated_points_roi = mapper_.getUpdatedPointsROI();
-    mapper_.clearUpdatedPoints();
+    mapper_.resetUpdatedArea();
 
     *min_x = std::min(*min_x, updated_points_roi.x);
     *min_y = std::min(*min_y, updated_points_roi.y);

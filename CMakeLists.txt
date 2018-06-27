@@ -2,7 +2,17 @@ cmake_minimum_required(VERSION 2.8.3)
 project(ground_truth_layer)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
-add_compile_options(-std=c++11)
+add_compile_options(-std=c++14)
+
+## openmp support
+find_package(OpenMP)
+if (OPENMP_FOUND)
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+endif()
+
+message(STATUS ${OPENMP_FOUND})
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -17,8 +27,8 @@ find_package(catkin REQUIRED COMPONENTS
 
 ## System dependencies are found with CMake's conventions
 find_package(Boost REQUIRED COMPONENTS system thread)
-find_package(stage 4.3 REQUIRED)
-
+# find_package(stage 4.3 REQUIRED)
+find_package(OpenCV 3)
 
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -124,6 +134,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${STAGE_INCLUDE_DIRS}
   ${Boost_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -141,6 +152,7 @@ target_link_libraries(ground_truth_layer
   ${catkin_LIBRARIES}
   ${Boost_LIBRARIES}
   ${STAGE_LIBRARIES}
+  ${OpenCV_LIBS}
 )
 
 ## Declare a C++ executable

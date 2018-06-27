@@ -44,7 +44,7 @@ public:
    * @param laser_scan
    * @param odometry
    */
-  void updateMap(const sensor_msgs::LaserScanConstPtr &laser_scan,
+  virtual void updateMap(const sensor_msgs::LaserScanConstPtr &laser_scan,
                  const nav_msgs::OdometryConstPtr &odometry);
 
   /**

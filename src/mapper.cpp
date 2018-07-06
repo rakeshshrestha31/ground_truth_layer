@@ -93,6 +93,12 @@ void Mapper::initMap(int width, int height, float resolution,
   map_ = cv::Scalar(unknown_cost_value);
 
   is_initialized_ = true;
+  
+  // tell the parent that the whole costmap has changed (for resetting)
+  updatedAreaMin_.x = 0;
+  updatedAreaMin_.y = 0;
+  updatedAreaMax_.x = width - 1;
+  updatedAreaMax_.y = height - 1;
 }
 
 int Mapper::updateMap(const sensor_msgs::LaserScanConstPtr &laser_scan, const nav_msgs::OdometryConstPtr &robot_odometry)
@@ -116,7 +122,7 @@ int Mapper::updateMap(const sensor_msgs::LaserScanConstPtr &laser_scan, const na
     std::chrono::system_clock::now().time_since_epoch()
   ).count();
 
-  ROS_INFO("mapper took: %f us", mapper_end_us - mapper_start_us);
+  ROS_DEBUG("mapper took: %f us", mapper_end_us - mapper_start_us);
   // debug
 //  cv::Mat map_correct_flip;
 //  cv::flip(map_, map_correct_flip, 0);
@@ -173,7 +179,7 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
       cv::LineIterator it(map_, cv::Point(robot_grid_x, robot_grid_y), cv::Point(laser_grid_x, laser_grid_y));
 
       // for free space
-      for(int j = 0; j < it.count; j++, ++it) {
+      for(int j = 0; j < it.count - LASER_BEAM_WIDTH; j++, ++it) {
         auto point = it.pos();
         if (point.x >= 0 && point.x < map_.cols
             && point.y >= 0 && point.y < map_.rows)

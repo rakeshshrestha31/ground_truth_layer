@@ -92,6 +92,8 @@ void Mapper::initMap(int width, int height, float resolution,
   map_ = cv::Mat(height_, width_, CV_8UC1, data_pointer);
   map_ = cv::Scalar(unknown_cost_value);
 
+  log_occ_prob_map_ = cv::Mat(height_, width_, CV_32F, cv::Scalar(0));
+
   is_initialized_ = true;
   
   // tell the parent that the whole costmap has changed (for resetting)
@@ -179,12 +181,18 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
       cv::LineIterator it(map_, cv::Point(robot_grid_x, robot_grid_y), cv::Point(laser_grid_x, laser_grid_y));
 
       // for free space
-      for(int j = 0; j < it.count - LASER_BEAM_WIDTH; j++, ++it) {
+      for(int j = 0; j < it.count - LASER_BEAM_WIDTH - 1; j++, ++it) {
         auto point = it.pos();
         if (point.x >= 0 && point.x < map_.cols
             && point.y >= 0 && point.y < map_.rows)
         {
-          map_.at<uint8_t>(point) = costmap_2d::FREE_SPACE;
+          log_occ_prob_map_.at<float_t>(point) += LOG_FREE;
+          if(log_occ_prob_map_.at<float_t>(point) < LOG_OCCUPANCY_MIN)
+            log_occ_prob_map_.at<float_t>(point) = LOG_OCCUPANCY_MIN;
+
+          if(log_occ_prob_map_.at<float_t>(point) < 0)
+            map_.at<uint8_t>(point) = costmap_2d::FREE_SPACE;
+
           minMaxPoints(point, local_min, local_max);
         }
       }
@@ -199,7 +207,13 @@ int Mapper::updateLaserScan(const sensor_msgs::LaserScanConstPtr &laser_scan, ro
               int x = laser_grid_x + col_offset;
               if (x >= 0 && x < map_.cols) {
                 cv::Point point(x, y);
-                map_.at<uint8_t>(point) = costmap_2d::LETHAL_OBSTACLE;
+                log_occ_prob_map_.at<float_t>(point) += LOG_OCCUPANCY;
+                if(log_occ_prob_map_.at<float_t>(point) > LOG_OCCUPANCY_MAX)
+                  log_occ_prob_map_.at<float_t>(point) = LOG_OCCUPANCY_MAX;
+
+                if(log_occ_prob_map_.at<float_t>(point) > 0)
+                  map_.at<uint8_t>(point) = costmap_2d::LETHAL_OBSTACLE;
+
                 minMaxPoints(point, local_min, local_max);
               }
             }

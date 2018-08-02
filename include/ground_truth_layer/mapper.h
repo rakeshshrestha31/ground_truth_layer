@@ -112,7 +112,7 @@ protected:
   boost::atomic_bool is_initialized_;
 
   cv::Mat map_;
-  cv::Mat relative_map_;
+  cv::Mat log_occ_prob_map_;
 
   int width_;
   int height_;
